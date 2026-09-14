@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>墨锭试磨室 · 标签与库位盘点台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <div class="title">
+      <h1>墨锭试磨室</h1>
+      <div class="meta">标签发放 · 库位维护 · 盘点台</div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-tab="items" class="active">墨锭</button>
+      <button data-tab="locations">库位</button>
+      <button data-tab="labels">标签</button>
+      <button data-tab="stocktake">盘点台</button>
+    </nav>
+    <div class="head-right">
+      <span id="netDot" class="net-dot online" title="在线状态"></span>
+      <select id="roleSelect" aria-label="角色">
+        <option value="counter">盘点人</option>
+        <option value="admin">管理员</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- 墨锭 -->
+  <section class="view" data-view="items">
+    <main class="two-col">
+      <div>
+        <form id="createForm" class="panel">
+          <h2>新增墨锭</h2>
+          <div id="itemFields"></div>
+          <label>初始状态</label>
+          <select name="status" id="itemStatus"></select>
+          <button class="block">保存墨锭</button>
+        </form>
+        <form id="actionForm" class="panel" style="margin-top:12px">
+          <h2>创建试磨记录</h2>
+          <label>选择墨锭</label>
+          <select name="id" id="itemSelect"></select>
+          <div id="extraFields"></div>
+          <button class="block secondary">提交记录</button>
+        </form>
+      </div>
+      <div>
+        <div class="stats" id="stats"></div>
+        <div class="toolbar">
+          <select id="statusFilter"><option value="">全部状态</option></select>
+          <input id="search" placeholder="搜索编号或关键词">
+          <button class="secondary" id="reloadItems">刷新</button>
+        </div>
+        <div class="grid" id="cards"></div>
+      </div>
+    </main>
+  </section>
+
+  <!-- 库位 -->
+  <section class="view hidden" data-view="locations">
+    <main class="two-col">
+      <form id="locForm" class="panel admin-only">
+        <h2>新建库位</h2>
+        <label>库位名称</label>
+        <input name="name" required placeholder="如 恒湿柜B">
+        <label>容量上限</label>
+        <input name="capacity" type="number" min="1" value="20" required>
+        <button class="block">建立库位</button>
+      </form>
+      <div class="panel">
+        <h2>库位列表（含在用/容量）</h2>
+        <div id="locList" class="loc-list"></div>
+      </div>
+    </main>
+  </section>
+
+  <!-- 标签 -->
+  <section class="view hidden" data-view="labels">
+    <main>
+      <form id="issueForm" class="panel admin-only">
+        <h2>分批发放标签</h2>
+        <div class="row">
+          <div style="flex:1">
+            <label>发入库位</label>
+            <select name="locationId" id="issueLocation"></select>
+          </div>
+          <div class="cap-hint" id="issueCapHint"></div>
+        </div>
+        <label>墨锭编号（每行一个；可在编号后用空格指定短码，留空自动生成）</label>
+        <textarea name="entries" rows="5" placeholder="IS-003&#10;IS-004 MQ00031&#10;IS-005"></textarea>
+        <div class="btn-row">
+          <button>发放本批标签</button>
+          <button type="button" class="secondary" id="issueAndPrint">发放并打印</button>
+        </div>
+      </form>
+      <div class="panel" style="margin-top:12px">
+        <div class="panel-head">
+          <h2>标签总表</h2>
+          <div class="btn-row">
+            <select id="labelLocationFilter"><option value="">全部库位</option></select>
+            <select id="labelStatusFilter">
+              <option value="active">活跃</option>
+              <option value="void">已作废</option>
+              <option value="">全部状态</option>
+            </select>
+            <input id="labelSearch" placeholder="搜短码 / 墨锭号">
+            <button type="button" class="secondary" id="printAll">批量打印当前结果</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="labelTable">
+            <thead><tr><th>短码</th><th>墨锭</th><th>库位</th><th>状态</th><th class="admin-only">操作</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </section>
+
+  <!-- 盘点台 -->
+  <section class="view hidden" data-view="stocktake">
+    <main class="two-col">
+      <div class="panel">
+        <h2>开始盘点</h2>
+        <label>选择库位</label>
+        <select id="scanLocation"></select>
+        <label>盘点人</label>
+        <input id="counterName" placeholder="姓名或工号">
+        <button class="block" id="startSession">开始 / 恢复本库位盘点</button>
+        <div id="sessionInfo" class="session-info hidden"></div>
+
+        <h2 style="margin-top:18px">扫码</h2>
+        <div class="scan-box">
+          <input id="scanInput" placeholder="扫码或输入短码后回车" autocomplete="off" inputmode="latin">
+          <button type="button" id="camBtn" class="secondary">摄像头</button>
+        </div>
+        <video id="camVideo" class="hidden" playsinline muted></video>
+        <div id="scanFeedback" class="scan-feedback"></div>
+        <div id="queueBox" class="queue-box hidden">
+          <b>离线队列：</b><span id="queueCount">0</span> 条待提交
+          <button type="button" class="secondary small" id="queueFlush">立即重传</button>
+        </div>
+        <button class="block danger" id="finishSession" style="margin-top:14px">结束盘点并生成差异清单</button>
+      </div>
+
+      <div class="panel">
+        <h2>盘点进度</h2>
+        <div class="progress-grid" id="progressGrid"></div>
+        <div class="cat-columns">
+          <div class="cat ok"><h3>在位 <span id="cntMatch">0</span></h3><ul id="listMatch"></ul></div>
+          <div class="cat dup"><h3>重复 <span id="cntDuplicate">0</span></h3><ul id="listDuplicate"></ul></div>
+          <div class="cat unknown"><h3>未知 <span id="cntUnknown">0</span></h3><ul id="listUnknown"></ul></div>
+          <div class="cat misplaced"><h3>错位 <span id="cntMisplaced">0</span></h3><ul id="listMisplaced"></ul></div>
+        </div>
+        <div id="reportBox" class="report-box hidden"></div>
+      </div>
+
+      <div class="panel" style="grid-column:1/-1">
+        <h2>历史盘点</h2>
+        <div id="sessionHistory" class="session-history"></div>
+      </div>
+    </main>
+  </section>
+
+  <!-- 打印区 -->
+  <div id="printArea" class="print-area"></div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
