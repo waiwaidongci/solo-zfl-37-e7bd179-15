@@ -157,11 +157,11 @@ async function handleScan(rawCode) {
     else feedback(out.scan.category, scanHtml(out.scan));
     await refreshSession();
   } catch (e) {
-    if (e.data && e.data.code === "void_code_rejected") {
+    if (e.code === "void_code_rejected") {
       feedback("void",
         `⛔ 旧码 <b>${esc(code)}</b> 已作废，拒绝入账。当前库位：<b>${esc(e.data.currentLocationName || "未知")}</b>` +
         (e.data.currentCode ? `，有效码：<b>${esc(e.data.currentCode)}</b>` : ""));
-    } else if (e.data && e.data.code === "session_closed") {
+    } else if (e.code === "session_closed") {
       feedback("error", "盘点已结束，扫码被拒绝");
       if (e.data.report) showReport(e.data.report);
       lockSession({ id: current.id, status: "finished" });
@@ -198,7 +198,7 @@ async function start() {
     renderEventLists(s.events);
     $("#reportBox").classList.add("hidden");
   } catch (e) {
-    if (e.data && e.data.code === "session_already_open") {
+    if (e.code === "session_already_open") {
       alert("该库位已有进行中的盘点（可能是其他盘点人发起）。同一库位并发盘点只允许一个，请先结束它。");
     } else alert("开始失败：" + e.message);
   }
@@ -241,7 +241,7 @@ async function finish() {
       all[current.id] = idemKey;
       localStorage.setItem(PENDING_FINISH_KEY, JSON.stringify(all));
       feedback("queued", "📵 离线：结束请求已排队，恢复联网后自动提交，只生效一次");
-    } else if (e.data && e.data.code === "already_finished") {
+    } else if (e.code === "already_finished") {
       showReport(e.data.report);
       lockSession({ id: current.id, status: "finished" });
     } else alert("结束失败：" + e.message);
@@ -256,10 +256,11 @@ function clearPendingFinish(sessionId) {
 
 async function onReconnect() {
   if (!isOnline()) return;
-  if (queueLength() && current) {
+  if (queueLength()) {
+    // 队列条目自带 sessionId；无需当前选中盘点也能自动提交
     const r = await flushQueue(null);
-    feedback("queued", `网络恢复：提交 ${r.flushed} 条离线扫码，每条仅入账一次`);
-    await refreshSession();
+    feedback("queued", `网络恢复：自动提交 ${r.flushed} 条离线扫码，每条仅入账一次`);
+    if (current) await refreshSession();
   }
   // 离线期间排队的「结束盘点」
   const pending = JSON.parse(localStorage.getItem(PENDING_FINISH_KEY) || "{}");
@@ -272,7 +273,7 @@ async function onReconnect() {
       clearPendingFinish(sessionId);
       await loadHistory(locations);
     } catch (e) {
-      if (!e.network && e.data && e.data.code === "already_finished") {
+      if (!e.network && e.code === "already_finished") {
         showReport(e.data.report);
         clearPendingFinish(sessionId);
       }
@@ -282,7 +283,13 @@ async function onReconnect() {
 }
 
 async function loadHistory(locs) {
-  const sessions = await api.get("/api/sessions");
+  let sessions;
+  try {
+    sessions = await api.get("/api/sessions");
+  } catch (e) {
+    $("#sessionHistory").innerHTML = `<div class="meta">历史记录加载失败（${esc(e.message)}），将在联网后自动重试</div>`;
+    return;
+  }
   $("#sessionHistory").innerHTML = sessions.map((s) => {
     const counts = s.summary || s.report?.counts;
     return `<div class="sess-row">
@@ -356,6 +363,20 @@ async function toggleCamera() {
 
 export function initStocktake(getLocations) {
   locations = getLocations();
+
+  // 先注册全局监听：即使后面任何一步出错，网络指示与恢复自动重放也要工作
+  onQueue("queue", renderQueue);
+  initConnectivity(onReconnect);
+  const dot = $("#netDot");
+  const paintDot = (online) => {
+    dot.classList.toggle("online", online);
+    dot.classList.toggle("offline", !online);
+    dot.title = online ? "在线" : "离线（本地排队）";
+  };
+  window.addEventListener("online", () => paintDot(true));
+  window.addEventListener("offline", () => paintDot(false));
+  paintDot(isOnline());
+
   $("#startSession").onclick = start;
   $("#finishSession").onclick = finish;
   $("#camBtn").onclick = toggleCamera;
@@ -367,20 +388,8 @@ export function initStocktake(getLocations) {
     }
   });
 
-  onQueue(renderQueue);
-  initConnectivity(onReconnect);
   renderQueue();
   loadHistory(locations);
-  // 网络指示
-  const dot = $("#netDot");
-  const paintDot = (online) => {
-    dot.classList.toggle("online", online);
-    dot.classList.toggle("offline", !online);
-    dot.title = online ? "在线" : "离线（本地排队）";
-  };
-  window.addEventListener("online", () => paintDot(true));
-  window.addEventListener("offline", () => paintDot(false));
-  paintDot(isOnline());
 }
 
 export function refreshStocktakeLocations(locs) {

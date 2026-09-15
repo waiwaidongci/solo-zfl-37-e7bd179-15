@@ -35,8 +35,11 @@ async function raw(path, { method = "GET", body, idemKey } = {}) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.error || "请求失败");
+    const err = new Error(data.error || data.message || "请求失败");
     err.status = res.status;
+    // 错误标识统一取服务端的 error 字段挂到 err.code；
+    // 注意 data.code 在部分错误里是「被扫短码」，不是错误标识，不能用它判断
+    err.code = data.error;
     err.data = data;
     throw err;
   }
@@ -69,7 +72,10 @@ export function enqueueScan(sessionId, code, eventKey) {
 }
 
 const listeners = { queue: [], online: [] };
-export function on(type, fn) { listeners[type].push(fn); }
+export function on(type, fn) {
+  if (!listeners[type]) listeners[type] = [];
+  listeners[type].push(fn);
+}
 function emitQueue() { listeners.queue.forEach((fn) => fn(queueLength())); }
 
 export async function flushQueue(onScanResult) {

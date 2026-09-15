@@ -84,7 +84,7 @@ async function replaceOrMove(oldCode, kind) {
     await loadLabels();
     alert("操作成功，旧码已立即作废。");
   } catch (e) {
-    alert("操作失败：" + (e.data && e.data.code === "code_already_exists" ? "新短码已存在" : e.message));
+    alert("操作失败：" + (e.code === "code_already_exists" ? "新短码已存在" : e.message));
   }
 }
 
@@ -140,7 +140,7 @@ async function doIssue(withPrint, getLocations, refreshHints) {
       item_not_found: "墨锭编号不存在，整批未发放",
       bad_code_format: "短码格式应为 2-16 位大写字母/数字/连字符",
     };
-    alert("发放失败：" + (map[e.data?.code] || e.message));
+    alert("发放失败：" + (map[e.code] || e.message));
   }
 }
 

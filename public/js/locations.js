@@ -50,11 +50,11 @@ function renderLocations() {
 }
 
 function hint(e) {
-  if (e.data && e.data.code === "capacity_below_used")
+  if (e.code === "capacity_below_used")
     return `容量不能低于在用标签数（当前 ${e.data.used}）`;
-  if (e.data && e.data.code === "location_not_empty")
+  if (e.code === "location_not_empty")
     return `库位内还有 ${e.data.used} 枚活跃标签，不能删除`;
-  if (e.data && e.data.code === "location_has_open_session")
+  if (e.code === "location_has_open_session")
     return "该库位有进行中的盘点，不能删除";
   return e.message;
 }
@@ -79,7 +79,7 @@ export function initLocations(refreshHints) {
       await loadLocations();
       refreshHints && refreshHints();
     } catch (err) {
-      alert("建立失败：" + (err.data && err.data.code === "location_name_exists" ? "库位名称已存在" : err.message));
+      alert("建立失败：" + (err.code === "location_name_exists" ? "库位名称已存在" : err.message));
     }
   };
   loadLocations();

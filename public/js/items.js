@@ -90,7 +90,7 @@ export function initItems(refreshHints) {
       await load();
       refreshHints && refreshHints();
     } catch (err) {
-      alert("保存失败：" + err.message + (err.data && err.data.code === "item_code_exists" ? "（编号已存在）" : ""));
+      alert("保存失败：" + err.message + (err.code === "item_code_exists" ? "（编号已存在）" : ""));
     }
   };
   actionForm.onsubmit = async (e) => {

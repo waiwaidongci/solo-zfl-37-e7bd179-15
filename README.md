@@ -59,7 +59,19 @@ npm run verify     # 端到端自动验证（换签/错位/离线/并发/回滚/
 
 ## 验证
 
-`npm run verify` 会用临时数据文件启动服务并自动覆盖：
+```bash
+npm run verify      # 后端 API：临时数据文件起服务
+npm run verify:ui   # 浏览器端到端：真实加载页面脚本，桌面 Chromium + 手机(iPhone)视口
+npm test            # 两者顺序执行
+```
+
+`verify:ui` 依赖 Playwright Chromium：首次运行需 `npx playwright install chromium`。
+它在真实浏览器里覆盖：页面初始化不报错、盘点历史打开即显示、网络指示、
+断网扫码本地排队→恢复后**自动**重放（无需手动点重传）且同一条只入账一次、
+页面上换签后扫旧码被拒并指出当前库位、错位/重复/未知分类、结束后冻结且扫码框锁死、
+批量打印生成 Code39 条码。
+
+`npm run verify` 用临时数据文件启动服务并自动覆盖：
 
 角色鉴权、容量上限、短码唯一（含作废码不可复用）、整批失败、
 换签旧码拒绝并指出当前库位、错位识别、离线 `eventKey` 重放只入账一次、
