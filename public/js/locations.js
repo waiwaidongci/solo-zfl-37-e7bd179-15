@@ -63,8 +63,19 @@ export function renderLocationSelectors(locations) {
   const opts = locations.map((l) => `<option value="${l.id}">${l.name}（${l.used}/${l.capacity}）</option>`).join("");
   const issue = document.querySelector("#issueLocation");
   const scan = document.querySelector("#scanLocation");
-  if (issue) { issue.innerHTML = opts; issue.dispatchEvent(new Event("change")); }
-  if (scan) scan.innerHTML = `<option value="">请选择库位…</option>` + opts;
+  // 重建选项前先记住用户已选库位；重建后若该库位仍然有效则重新应用，
+  // 避免异步刷新把刚选中的值清空（手机上开始盘点竞态的根因）。
+  if (issue) {
+    const previous = issue.value;
+    issue.innerHTML = opts;
+    if (previous && locations.some((l) => l.id === previous)) issue.value = previous;
+    issue.dispatchEvent(new Event("change"));
+  }
+  if (scan) {
+    const previous = scan.value;
+    scan.innerHTML = `<option value="">请选择库位…</option>` + opts;
+    if (previous && locations.some((l) => l.id === previous)) scan.value = previous;
+  }
 }
 
 export function initLocations(refreshHints) {

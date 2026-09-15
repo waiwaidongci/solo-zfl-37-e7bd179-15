@@ -24,10 +24,15 @@ function applyRole(role) {
   setRole(role);
 }
 
-// 数据变化后同步各页的库位下拉与容量提示；失败不影响盘点台自身功能
+// 数据变化后同步各页的库位下拉与容量提示；失败不影响盘点台自身功能。
+// 用单调递增的刷新序号丢弃乱序返回：只有最新一次拉取可以落地渲染，
+// 防止慢响应晚到把用户刚选的库位冲掉。
+let refreshSeq = 0;
 async function refreshAll() {
+  const my = ++refreshSeq;
   try {
     const locs = await loadLocations();
+    if (my !== refreshSeq) return; // 已有更新的一轮刷新，放弃本次落地
     renderLocationSelectors(locs);
     refreshStocktakeLocations(locs);
   } catch (e) {

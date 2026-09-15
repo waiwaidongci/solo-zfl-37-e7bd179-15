@@ -102,6 +102,11 @@ async function runScenario(label, context, tag) {
   // 每个场景独立的库位与编码前缀，避免两个场景相互干扰
   const locA = (await api("POST", "/api/admin/locations", { name: "盘点柜" + tag, capacity: 10 })).data;
   const locB = (await api("POST", "/api/admin/locations", { name: "错位柜" + tag, capacity: 10 })).data;
+  // 库位选择竞态回归专用：连续多轮各用一个新库位（避免撞上进行中的盘点）
+  const raceLocs = [];
+  for (let i = 1; i <= 4; i++) {
+    raceLocs.push((await api("POST", "/api/admin/locations", { name: `竞态柜${tag}${i}`, capacity: 10 })).data);
+  }
   const c1 = tag + "A001", c2 = tag + "A002", cb = tag + "B001", cnew = tag + "A020", cprint = tag + "PRT1";
   for (const code of [c1, c2, cb, cprint]) await api("POST", "/api/items", { code, status: "待试磨" });
   await api("POST", "/api/admin/labels/issue", {
@@ -249,6 +254,67 @@ async function runScenario(label, context, tag) {
     // 打印区里应有可渲染的 Code39 条码（<rect>）
     const rects = await page.$$eval("#printArea svg rect", (els) => els.length);
     assert.ok(rects > 10);
+  });
+
+  // —— 库位选择竞态：连续重复「选库位→切台往返触发异步刷新→开始盘点」必须稳定 ——
+  await test(`[${label}] 选库位后异步刷新不丢选择，连续多轮都能稳定进入盘点`, async () => {
+    let lastAlert = "";
+    page.on("dialog", (d) => { lastAlert = d.message(); d.accept(); });
+    const ensureOption = (id) => poll(() => page.$eval("#scanLocation", (el, v) =>
+      [...el.options].some((o) => o.value === v), id));
+
+    for (let i = 0; i < 3; i++) {
+      const target = raceLocs[i];
+      await page.click('.tabs button[data-tab="stocktake"]');
+      await ensureOption(target.id);
+      await page.selectOption("#scanLocation", target.id);
+      assert.equal(await page.$eval("#scanLocation", (el) => el.value), target.id, "选中立即生效");
+
+      // 切到别的标签页再立刻切回：触发一轮异步库位刷新（旧版会把选择冲成空）
+      await page.click('.tabs button[data-tab="items"]');
+      await page.click('.tabs button[data-tab="stocktake"]');
+      await poll(() => page.$eval("#scanLocation", (el, v) =>
+        [...el.options].some((o) => o.value === v), target.id));
+      await page.waitForTimeout(300); // 等异步刷新落地
+      assert.equal(await page.$eval("#scanLocation", (el) => el.value), target.id,
+        "异步刷新后选择必须保留");
+
+      // 点开始：只能读取仍有效的库位，稳定进入盘点
+      await page.click("#startSession");
+      await poll(() => page.$eval("#sessionInfo", (el, name) =>
+        !el.classList.contains("hidden") && el.textContent.includes(name) ? true : false, target.name));
+      assert.equal(lastAlert, "", "不应弹出请选择库位");
+      lastAlert = "";
+    }
+
+    // 强竞态：刷新响应被人为延迟（慢响应晚到），期间选库位并点开始
+    const slowTarget = raceLocs[3];
+    let slowed = false;
+    await page.route("**/api/locations", async (route) => {
+      if (route.request().method() === "GET" && !slowed) {
+        slowed = true;
+        const resp = await route.fetch();      // 先拿到真实数据
+        const body = await resp.text();
+        await new Promise((r) => setTimeout(r, 1200)); // 慢响应晚到
+        return route.fulfill({ response: resp, body });
+      }
+      return route.continue();
+    });
+    await page.click('.tabs button[data-tab="items"]');
+    await page.click('.tabs button[data-tab="stocktake"]'); // 这次刷新慢
+    await page.waitForTimeout(150);
+    await page.selectOption("#scanLocation", slowTarget.id);
+    assert.equal(await page.$eval("#scanLocation", (el) => el.value), slowTarget.id);
+    await page.click("#startSession");
+    // 慢响应尚未返回，盘点应已基于用户选择稳定开始
+    await poll(() => page.$eval("#sessionInfo", (el, name) =>
+      !el.classList.contains("hidden") && el.textContent.includes(name) ? true : false, slowTarget.name));
+    await page.waitForTimeout(1300); // 等慢响应落地
+    // 慢响应落地后：选择与进行中的盘点都不被冲掉
+    assert.equal(await page.$eval("#scanLocation", (el) => el.value), slowTarget.id,
+      "慢响应落地后选择仍保留");
+    assert.equal(lastAlert, "", "慢刷新下也不应提示请选择库位");
+    await page.unroute("**/api/locations").catch(() => {});
   });
 
   assert.equal(pageErrors.length, 0, "全程页面脚本错误：" + pageErrors.join(" | "));

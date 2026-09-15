@@ -182,8 +182,15 @@ function scanHtml(s) {
 }
 
 async function start() {
-  const locationId = $("#scanLocation").value;
+  const sel = $("#scanLocation");
+  const locationId = sel.value;
   if (!locationId) return alert("请选择库位");
+  // 只接受仍存在的库位：若选中项已被异步刷新移除，回退到空并提示重新选择
+  if (![...sel.options].some((o) => o.value === locationId) ||
+      (locations.length && !locations.some((l) => l.id === locationId))) {
+    sel.value = "";
+    return alert("所选库位已失效，请重新选择");
+  }
   try {
     const s = await api.post("/api/sessions",
       { locationId, counter: $("#counterName").value, clientKey: clientKey() });
